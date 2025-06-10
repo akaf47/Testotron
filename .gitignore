@@ -193,3 +193,4 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 /.vs/Testotron
+/Testotron.pyproj.user
