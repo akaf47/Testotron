@@ -1,0 +1,160 @@
+import anthropic
+import importlib.util
+import os
+import tempfile
+from datetime import time
+from dotenv import load_dotenv
+from pathlib import Path
+from git import Repo
+from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
+
+load_dotenv()
+
+class GitHubTestGenerator:
+    def __init__(self, repo_url, claude_api_key):
+        self.repo_url = repo_url
+        self.claude_api_key = claude_api_key
+        self.repo_dir = None
+        self.language = None
+        self.test_framework = None
+        
+    def clone_repository(self):
+        """Clone the GitHub repository to a temporary directory if not already present"""
+        try:
+            repo_name = self.repo_url.split('/')[-1].replace('.git', '')
+            temp_dir = Path(tempfile.gettempdir())
+            self.repo_dir = temp_dir / repo_name
+            if self.repo_dir.exists():
+                print(f"Repository already present at {self.repo_dir}, skipping clone.")
+                return True
+            Repo.clone_from(self.repo_url, self.repo_dir)
+            return True
+        except Exception as e:
+            print(f"Error cloning repository: {e}")
+            return False
+    
+    def analyze_repository(self):
+        """Determine the primary language and test framework"""
+        # This would involve checking for package.json, requirements.txt, etc.
+        # For simplicity, we'll assume Python for this example
+        self.language = 'python'
+        self.test_framework = 'pytest'
+        
+    def generate_tests(self):
+        """Generate unit tests for all testable components"""
+        if self.language == 'python':
+            return self._generate_python_tests()
+        # Add other language handlers here
+        
+    def _generate_python_tests(self):
+        """Generate pytest unit tests for Python code"""
+        test_dir = self.repo_dir / 'tests'
+        test_dir.mkdir(exist_ok=True)
+        
+        # Find all Python modules in the repo
+        for py_file in self.repo_dir.rglob('*.py'):
+            if 'test' in str(py_file) or 'tests' in str(py_file):
+                continue  # Skip existing test files
+                
+            # Analyze the Python file
+            module_name = py_file.stem
+            spec = importlib.util.spec_from_file_location(module_name, py_file)
+            module = importlib.util.module_from_spec(spec)
+            
+            # Use Claude 4 to generate tests
+            test_code = self._ask_claude_to_generate_tests(py_file.read_text(), module_name)
+            
+            # Save the test file
+            test_file = test_dir / f"test_{module_name}.py"
+            test_file.write_text(test_code)
+            
+    def _ask_claude_to_generate_tests(self, source_code, module_name):
+        """Use Claude 4 API to generate unit tests"""
+        prompt = f"""
+        Please generate comprehensive unit tests for the following Python module: {module_name}.
+        Use pytest framework and include tests for all major functions and edge cases.
+        The code to test is:
+        
+        {source_code}
+        
+        Return only the complete test file content with imports, no additional explanation.
+        """
+        
+        # This would be replaced with actual Claude 4 API call
+        response = self._call_claude_api(prompt)
+        return response
+
+    def _call_claude_api(self, prompt, max_retries=3, initial_delay=1):
+        """Make actual API calls to Claude 4 using Anthropic client"""
+        client = Anthropic(api_key=self.claude_api_key)
+        
+        # # Claude API parameters
+        # params = {
+        #     "model": "claude-2.1",  # Use a model supported by the Completions API
+        #     "max_tokens_to_sample": 4000,
+        #     "temperature": 0.3,
+        #     "prompt": f"{HUMAN_PROMPT} {prompt} {AI_PROMPT}",
+        # }
+        
+        # Retry logic for API calls
+        for attempt in range(max_retries):
+            try:
+                response = client.messages.create(
+                    model="claude-3-haiku-20240307",  # Or another Claude 3 model available to you
+                    max_tokens=4000,
+                    temperature=0.3,
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                return response.content[0].text.strip()
+            except anthropic.APIConnectionError as e:
+                if attempt == max_retries - 1:
+                    raise
+                delay = initial_delay * (2 ** attempt)
+                time.sleep(delay)
+            except anthropic.APIError as e:
+                print(f"Claude API error: {e}")
+                raise
+
+        
+    # def _call_claude_api(self, prompt):
+    #     """Mock Claude 4 API call - replace with actual implementation"""
+    #     # In practice, you would use the official Claude API here
+    #     print("Calling Claude API with prompt...")
+    #     return f"""
+    #     # Generated by Claude 4 Unit Test Agent
+    #     import pytest
+    #     from {module_name} import *
+        
+    #     # Test cases would be generated here based on actual code analysis
+    #     def test_example_function():
+    #         assert True
+    #     """
+        
+    def cleanup(self):
+        """Remove the cloned repository"""
+        if self.repo_dir and self.repo_dir.exists():
+            import shutil
+            shutil.rmtree(self.repo_dir)
+            
+    def run(self):
+        """Main execution flow"""
+        if not self.clone_repository():
+            return False
+        self.analyze_repository()
+        self.generate_tests()
+        print(f"Unit tests generated in {self.repo_dir}/tests")
+        return True
+
+
+if __name__ == "__main__":
+    # Example usage
+    repo_url = "https://github.com/akaf47/langchain-agent-lab"
+    claude_key = os.environ.get("CLAUDE_API_KEY")
+    
+    agent = GitHubTestGenerator(repo_url, claude_key)
+    if agent.run():
+        print("Test generation successful!")
+    else:
+        print("Test generation failed")

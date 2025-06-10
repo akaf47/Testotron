@@ -1,0 +1,6 @@
+# Core requirements
+gitpython==3.1.32
+requests==2.31.0
+importlib-metadata==6.0.0  # Needed for importlib.util in some Python versions
+anthropic
+python-dotenv
